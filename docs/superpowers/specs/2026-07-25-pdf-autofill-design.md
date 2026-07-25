@@ -164,10 +164,12 @@ Generate → filled PDF in Downloads → print, send, or open in a pen app to si
 
 ## 8. Delivery
 
-Deployed as a static site. **Open decision:** GitHub Pages (free, one command via the
-already-authenticated `gh` CLI, but requires a public repo, so the blank contract template
-sits at an unlisted public URL) versus Cloudflare Pages (free, private source, ~10 min more
-setup). To be confirmed before Session A. Either way a `noindex` header/meta is set.
+Deployed as a static site on **GitHub Pages** (decided 2026-07-25, at the start of Session A).
+Free, one command via the already-authenticated `gh` CLI. The trade-off — a public repo, so
+the blank contract template and all source sit at a public URL — is accepted knowingly: the
+committed template is blank and no job data or client PII is ever committed. A `noindex`
+meta tag and `robots.txt` are set. Cloudflare Pages (private source, ~10 min more setup) was
+the rejected alternative; migrating later is cheap since only the deploy step changes.
 
 Offline: service worker caches the app shell and the template PDF, so the tool works with
 no signal at a pickup.
