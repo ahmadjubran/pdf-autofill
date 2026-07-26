@@ -27,6 +27,11 @@ describe('serialiseFieldMap / parseFieldMap', () => {
       .toThrow(/fields/);
   });
 
+  test('rejects a pageCount that is not a positive integer', () => {
+    const bad = { ...VALID_MAP, pageCount: 0 };
+    expect(() => parseFieldMap(JSON.stringify(bad))).toThrow(/pageCount must be a positive integer/);
+  });
+
   test('rejects a field whose page index is outside the document', () => {
     const bad = { ...VALID_MAP, fields: [{ ...VALID_MAP.fields[0], page: 11 }] };
     expect(() => parseFieldMap(JSON.stringify(bad))).toThrow(/page 11/);
@@ -35,6 +40,11 @@ describe('serialiseFieldMap / parseFieldMap', () => {
   test('rejects a coordinate outside 0..1 because fractions are the whole contract', () => {
     const bad = { ...VALID_MAP, fields: [{ ...VALID_MAP.fields[0], y: 1.5 }] };
     expect(() => parseFieldMap(JSON.stringify(bad))).toThrow(/y.*1\.5/);
+  });
+
+  test('rejects a coordinate that is not a number', () => {
+    const bad = { ...VALID_MAP, fields: [{ ...VALID_MAP.fields[0], y: 'not-a-number' }] };
+    expect(() => parseFieldMap(JSON.stringify(bad))).toThrow(/y must be a number/);
   });
 
   test('rejects a field bound to a variable that does not exist', () => {
