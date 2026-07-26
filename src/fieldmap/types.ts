@@ -37,10 +37,13 @@ export type FieldMap = {
 
 export type Provenance = 'ai' | 'manual';
 
+/** One entered value per Var.id. Shared by `Job` and by `fill`'s draw input. */
+export type FieldValues = Record<string, string | boolean>;
+
 export type Job = {
   id: string;
   name: string;
-  values: Record<string, string | boolean>;
+  values: FieldValues;
   /** Drives the visual marking of AI-filled values so they get double-checked before signing. */
   provenance: Record<string, Provenance>;
   updatedAt: number;

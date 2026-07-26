@@ -20,7 +20,7 @@ const VIEWPORT_MARGIN_PX = 32;
  */
 const FALLBACK_ERROR_COLOR = '#f87171';
 
-type StatusTone = 'ok' | 'error' | 'busy';
+type StatusTone = 'ok' | 'warning' | 'error' | 'busy';
 
 const app = document.querySelector<HTMLElement>('#app');
 const status = document.querySelector<HTMLParagraphElement>('#status');
@@ -66,19 +66,29 @@ async function main(): Promise<void> {
   setStatus('Drawing the coordinate probes…');
   const map = buildProofMap(EXPECTED_PAGE_COUNT);
   const { bytes, warnings } = await fillPdf(templateBytes, map, buildProofValues(EXPECTED_PAGE_COUNT));
-  if (warnings.length > 0) {
-    // Deliberate, not a debug leftover: a fill warning means a probe was
-    // silently skipped, which the on-screen page-by-page check should also
-    // catch. Logging it here makes the cause traceable without blocking.
-    console.warn('fill warnings:', warnings);
-  }
 
   addDownloadLink(app, bytes);
 
-  setStatus('Rendering all 11 pages…');
-  await renderAllPages(app, bytes);
+  setStatus('Rendering all pages…');
+  const renderedPageCount = await renderAllPages(app, bytes);
+
+  if (warnings.length > 0) {
+    // The DOM status is the only channel visible on the phone — a console is
+    // not. A fill warning means a probe was silently skipped or a mapped
+    // position may be wrong, so this must never end in the same green "ok"
+    // status as a clean fill; that status is the go/no-go signal the human
+    // partner is told to trust. console.warn stays too, for anyone who does
+    // have devtools open.
+    console.warn('fill warnings:', warnings);
+    setStatus(
+      `Rendered ${renderedPageCount} pages with ${warnings.length} warning(s): ${warnings.join(' | ')}`,
+      'warning',
+    );
+    return;
+  }
+
   setStatus(
-    `Rendered ${EXPECTED_PAGE_COUNT} pages. Each label should start exactly at the fraction it names.`,
+    `Rendered ${renderedPageCount} pages. Each label should start exactly at the fraction it names.`,
     'ok',
   );
 }
@@ -93,7 +103,7 @@ function addDownloadLink(root: HTMLElement, bytes: Uint8Array): void {
   root.append(link);
 }
 
-async function renderAllPages(root: HTMLElement, bytes: Uint8Array): Promise<void> {
+async function renderAllPages(root: HTMLElement, bytes: Uint8Array): Promise<number> {
   const doc = await pdfjs.getDocument({ data: bytes }).promise;
 
   for (let pageNo = 1; pageNo <= doc.numPages; pageNo++) {
@@ -122,6 +132,7 @@ async function renderAllPages(root: HTMLElement, bytes: Uint8Array): Promise<voi
     // See node_modules/pdfjs-dist/types/src/display/api.d.ts:393-412.
     await page.render({ canvas, viewport }).promise;
   }
+  return doc.numPages;
 }
 
 main().catch(reportFatalError);

@@ -5,3 +5,10 @@ coverage/
 *.local
 .DS_Store
 Thumbs.db
+
+# Only the blank template is ever committed — no job data, no filled
+# contracts, no client PII (Global Constraints, session A plan). This is a
+# public repo; a filled contract left anywhere in the tree must never be
+# git-addable.
+*.pdf
+!public/template/contract.pdf

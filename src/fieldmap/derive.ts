@@ -1,4 +1,5 @@
 import type { Field, FieldMap, Var } from './types';
+import { FieldMapError } from './parse';
 
 export type VarGroup = {
   group: string;
@@ -30,7 +31,11 @@ export function deriveVars(map: FieldMap): VarGroup[] {
 
 /** How many places each variable is drawn — the "fill once, appears 8 times" count. */
 export function countFieldsPerVar(map: FieldMap): Record<string, number> {
-  const counts: Record<string, number> = {};
+  // Object.create(null): field.bind is a caller-supplied string (ultimately
+  // from parsed field-map JSON), and a plain {} would route a bind of
+  // "__proto__" through Object.prototype's accessor instead of storing it as
+  // a normal key, silently losing that field's count.
+  const counts: Record<string, number> = Object.create(null);
   for (const field of map.fields) {
     counts[field.bind] = (counts[field.bind] ?? 0) + 1;
   }
@@ -50,13 +55,13 @@ export function countFieldsPerVar(map: FieldMap): Record<string, number> {
  */
 export function stampGroup(map: FieldMap, fieldIds: string[], targetPage: number): FieldMap {
   if (!Number.isInteger(targetPage) || targetPage < 0 || targetPage >= map.pageCount) {
-    throw new Error(`Cannot stamp onto page ${targetPage}: the template has pages 0..${map.pageCount - 1}.`);
+    throw new FieldMapError(`Cannot stamp onto page ${targetPage}: the template has pages 0..${map.pageCount - 1}.`);
   }
 
   const byId = new Map(map.fields.map((f) => [f.id, f]));
   const missing = fieldIds.filter((id) => !byId.has(id));
   if (missing.length > 0) {
-    throw new Error(`Cannot stamp unknown field id(s): ${missing.join(', ')}`);
+    throw new FieldMapError(`Cannot stamp unknown field id(s): ${missing.join(', ')}`);
   }
 
   const usedIds = new Set(map.fields.map((f) => f.id));

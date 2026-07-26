@@ -31,6 +31,22 @@ function mapWith(fields: FieldMap['fields'], pageCount = 2): FieldMap {
   };
 }
 
+/**
+ * The drawn text strings on one page, for assertions that only care whether/what
+ * text was drawn — not its exact device position (see readDevicePosition below
+ * for that).
+ */
+async function textItemsOf(bytes: Uint8Array, pageNo = 1): Promise<string[]> {
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const doc = await pdfjs.getDocument({
+    data: new Uint8Array(bytes),
+    standardFontDataUrl: `${resolve('node_modules/pdfjs-dist/standard_fonts/')}/`,
+  }).promise;
+  const page = await doc.getPage(pageNo);
+  const items = (await page.getTextContent()).items as Array<{ str: string }>;
+  return items.map((item) => item.str);
+}
+
 describe('visibleBoxOf', () => {
   test('reports the offset origin rather than a zero-based size', async () => {
     const doc = await PDFDocument.load(await makeTemplate(1));
@@ -65,7 +81,9 @@ describe('fillPdf', () => {
 
   test('warns instead of throwing when a field points past the last page', async () => {
     const field = { id: 'stray', page: 5, x: 0.5, y: 0.5, size: 10, align: 'left', type: 'text', bind: 'orderNo' } as const;
-    const result = await fillPdf(await makeTemplate(2), mapWith([field], 6), { orderNo: 'X' });
+    // pageCount matches the template (2) so this test isolates the stray-field
+    // warning from the separate pageCount cross-check warning (see below).
+    const result = await fillPdf(await makeTemplate(2), mapWith([field], 2), { orderNo: 'X' });
     expect(result.warnings).toHaveLength(1);
     expect(result.warnings[0]).toMatch(/stray/);
     expect(result.warnings[0]).toMatch(/page 5/);
@@ -91,6 +109,62 @@ describe('fillPdf', () => {
     const field = { id: 'f1', page: 0, x: 0.5, y: 0.5, size: 10, align: 'left', type: 'text', bind: 'orderNo' } as const;
     await expect(fillPdf(await makeTemplate(1, 90), mapWith([field], 1), { orderNo: 'X' }))
       .rejects.toThrow(UnsupportedPageError);
+  });
+});
+
+describe('fillPdf pageCount cross-check', () => {
+  test('warns naming both numbers when the map pageCount does not match the template', async () => {
+    const result = await fillPdf(await makeTemplate(2), mapWith([], 5), {});
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0]).toMatch(/5/);
+    expect(result.warnings[0]).toMatch(/2/);
+  });
+
+  test('does not warn when pageCount matches the template', async () => {
+    const result = await fillPdf(await makeTemplate(3), mapWith([], 3), {});
+    expect(result.warnings).toEqual([]);
+  });
+});
+
+describe('fillPdf field-level draw failures', () => {
+  test('draws a left-aligned value containing a newline instead of warning, because drawText handles multi-line text', async () => {
+    const field = { id: 'notes', page: 0, x: 0.2, y: 0.2, size: 10, align: 'left', type: 'text', bind: 'orderNo' } as const;
+    const result = await fillPdf(await makeTemplate(1), mapWith([field], 1), { orderNo: 'line one\nline two' });
+    expect(result.warnings).toEqual([]);
+    const out = await PDFDocument.load(result.bytes);
+    expect(out.getPageCount()).toBe(1);
+    const items = await textItemsOf(result.bytes);
+    expect(items.some((str) => str.includes('line one'))).toBe(true);
+    expect(items.some((str) => str.includes('line two'))).toBe(true);
+  });
+
+  test('warns and skips only the offending field when a value has a character the font cannot encode, without losing the other fields or the save', async () => {
+    const bad = { id: 'bad', page: 0, x: 0.2, y: 0.2, size: 10, align: 'left', type: 'text', bind: 'orderNo' } as const;
+    const good = { id: 'good', page: 0, x: 0.2, y: 0.6, size: 10, align: 'left', type: 'text', bind: 'agreed' } as const;
+
+    const result = await fillPdf(
+      await makeTemplate(1),
+      mapWith([bad, good], 1),
+      { orderNo: 'bad \u{1F600} value', agreed: 'still drawn' },
+    );
+
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0]).toMatch(/bad/);
+
+    const out = await PDFDocument.load(result.bytes);
+    expect(out.getPageCount()).toBe(1);
+    const items = await textItemsOf(result.bytes);
+    expect(items.some((str) => str.includes('still drawn'))).toBe(true);
+  });
+});
+
+describe('fillPdf value lookup safety', () => {
+  test('does not draw an inherited Object.prototype member when a field binds to "constructor"', async () => {
+    const field = { id: 'f1', page: 0, x: 0.2, y: 0.2, size: 10, align: 'left', type: 'text', bind: 'constructor' } as const;
+    const result = await fillPdf(await makeTemplate(1), mapWith([field], 1), {});
+    expect(result.warnings).toEqual([]);
+    const items = await textItemsOf(result.bytes);
+    expect(items.some((str) => str.includes('native code'))).toBe(false);
   });
 });
 

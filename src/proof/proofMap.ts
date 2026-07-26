@@ -1,5 +1,4 @@
-import type { FieldAlign, FieldMap } from '../fieldmap/types';
-import type { FillValues } from '../fill/fill';
+import type { FieldAlign, FieldMap, FieldValues } from '../fieldmap/types';
 
 export type ProofProbe = {
   tag: string;
@@ -67,8 +66,8 @@ export function buildProofMap(pageCount: number): FieldMap {
   return { templateId: 'contract-v1-proof', pageCount, vars, fields };
 }
 
-export function buildProofValues(pageCount: number): FillValues {
-  const values: FillValues = {};
+export function buildProofValues(pageCount: number): FieldValues {
+  const values: FieldValues = {};
   for (let page = 0; page < pageCount; page++) {
     for (const probe of PROOF_PROBES) {
       values[proofVarId(probe.tag, page)] = probeLabel(probe.tag, page);

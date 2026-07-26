@@ -128,16 +128,22 @@ before the contract is signed.
 ### Coordinate contract
 
 Fractions have origin **top-left**, matching how the mapper sees the page. `fill` converts
-per page:
+per page using the page's visible box (CropBox, falling back to MediaBox) — never a bare
+page size:
 
 ```
-pdfX = x * pageWidth
-pdfY = (1 - y) * pageHeight
+pdfX = box.x + fx * box.width
+pdfY = box.y + (1 - fy) * box.height
 ```
 
-and must account for each page's `MediaBox` offset and `/Rotate`. Pages in this document
-came from different scanners; this conversion is verified against all 11 pages in Session A
-rather than assumed.
+`box`'s origin is not reliably zero: this template's box origin is `y = 7.9200063`, and
+pdf-lib's `drawText` takes raw PDF user-space coordinates without compensating for it. The
+naive `pdfY = (1 - y) * pageHeight` shorthand silently drops that offset, placing every field
+7.92pt too low and clipping anything mapped near the bottom edge off the page. The fraction
+point is the text **baseline** — the left edge for `align: 'left'`, the horizontal centre for
+`align: 'center'`. Conversion must also account for each page's `/Rotate`. Pages in this
+document came from different scanners; this conversion is verified against all 11 pages in
+Session A rather than assumed.
 
 ## 6. User flows
 

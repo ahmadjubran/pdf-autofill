@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { deriveVars, countFieldsPerVar, stampGroup } from './derive';
+import { FieldMapError } from './parse';
 import type { FieldMap } from './types';
 
 const MAP: FieldMap = {
@@ -45,6 +46,19 @@ describe('deriveVars', () => {
 describe('countFieldsPerVar', () => {
   test('counts how many places each variable is drawn', () => {
     expect(countFieldsPerVar(MAP)).toEqual({ orderNo: 2, pickupDate: 1, originCity: 1 });
+  });
+
+  test('records a count for a field bound to "__proto__" instead of silently discarding it', () => {
+    const withProtoBind: FieldMap = {
+      ...MAP,
+      fields: [
+        ...MAP.fields,
+        { id: 'e', page: 0, x: 0.1, y: 0.5, size: 10, align: 'left', type: 'text', bind: '__proto__' },
+      ],
+    };
+    const counts = countFieldsPerVar(withProtoBind);
+    expect(Object.prototype.hasOwnProperty.call(counts, '__proto__')).toBe(true);
+    expect(counts['__proto__']).toBe(1);
   });
 });
 
@@ -93,10 +107,12 @@ describe('stampGroup', () => {
   });
 
   test('throws when asked to stamp onto a page outside the document', () => {
+    expect(() => stampGroup(MAP, ['a'], 11)).toThrow(FieldMapError);
     expect(() => stampGroup(MAP, ['a'], 11)).toThrow(/page 11/);
   });
 
   test('throws when a requested field id does not exist', () => {
+    expect(() => stampGroup(MAP, ['ghost'], 4)).toThrow(FieldMapError);
     expect(() => stampGroup(MAP, ['ghost'], 4)).toThrow(/ghost/);
   });
 
