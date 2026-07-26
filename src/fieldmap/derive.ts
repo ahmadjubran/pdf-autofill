@@ -40,6 +40,13 @@ export function countFieldsPerVar(map: FieldMap): Record<string, number> {
 /**
  * Copy a set of fields onto another page, keeping position and binding.
  * Returns a new FieldMap; the input is never mutated.
+ *
+ * Uniqueness invariant: generated ids are only guaranteed unique within the
+ * `map` passed to *this* call. Callers making successive stamps must thread
+ * each returned map into the next call (e.g. `map = stampGroup(map, ...)`)
+ * rather than reusing the original — two calls that both stamp from the same
+ * stale map can independently compute the same generated id and collide once
+ * their results are merged.
  */
 export function stampGroup(map: FieldMap, fieldIds: string[], targetPage: number): FieldMap {
   if (!Number.isInteger(targetPage) || targetPage < 0 || targetPage >= map.pageCount) {

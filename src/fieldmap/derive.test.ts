@@ -73,6 +73,19 @@ describe('stampGroup', () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
+  test('resolves an id collision across chained stamps by appending a numeric suffix', () => {
+    // 'a' is on page 0. Stamping it onto page 4 twice — threading the result
+    // forward each time, as callers must (see stampGroup's doc comment) —
+    // makes the second call collide with the first call's generated id and
+    // exercises the nextId retry loop for real, rather than only proving two
+    // already-distinct source fields stay distinct.
+    const once = stampGroup(MAP, ['a'], 4);
+    const twice = stampGroup(once, ['a'], 4);
+    const ids = twice.fields.map((f) => f.id);
+    expect(ids.filter((id) => id.startsWith('a-p4'))).toEqual(['a-p4', 'a-p4-2']);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
   test('does not mutate the input map', () => {
     const before = structuredClone(MAP);
     stampGroup(MAP, ['a'], 4);

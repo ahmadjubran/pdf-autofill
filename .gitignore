@@ -1,6 +1,7 @@
 node_modules/
 dist/
 proof-output/
+coverage/
 *.local
 .DS_Store
 Thumbs.db
