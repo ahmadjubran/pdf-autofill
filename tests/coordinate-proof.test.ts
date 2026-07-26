@@ -22,12 +22,26 @@ describe('GO/NO-GO: fractional coordinates land correctly on all 11 real pages',
     const pages = doc.getPages();
     expect(pages).toHaveLength(EXPECTED_PAGE_COUNT);
 
+    // Accumulate rather than assert inside the loop. Pages 7, 10 and 11 came from
+    // different scanners, so if several pages regress we need to see all of them in
+    // one run — asserting in-loop would report only the first and hide the rest.
+    const failures: string[] = [];
     for (const [i, page] of pages.entries()) {
       const media = page.getMediaBox();
       const crop = page.getCropBox();
-      expect(page.getRotation().angle % 360, `page ${i + 1} /Rotate`).toBe(0);
-      expect(crop, `page ${i + 1} CropBox differs from MediaBox`).toEqual(media);
+      const rotation = page.getRotation().angle % 360;
+
+      if (rotation !== 0) {
+        failures.push(`page ${i + 1}: /Rotate is ${rotation}, expected 0`);
+      }
+      if (crop.x !== media.x || crop.y !== media.y || crop.width !== media.width || crop.height !== media.height) {
+        failures.push(
+          `page ${i + 1}: CropBox ${JSON.stringify(crop)} differs from MediaBox ${JSON.stringify(media)}`,
+        );
+      }
     }
+
+    expect(failures, `\n${failures.join('\n')}\n`).toEqual([]);
   });
 
   test('every probe on every page renders at exactly the fraction it was mapped to', async () => {

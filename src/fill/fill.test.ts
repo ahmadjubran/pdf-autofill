@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
-import { PDFDocument, degrees } from 'pdf-lib';
+import { resolve } from 'node:path';
+import { PDFDocument, StandardFonts, degrees } from 'pdf-lib';
 import { fillPdf, visibleBoxOf, UnsupportedPageError } from './fill';
 import type { FieldMap } from '../fieldmap/types';
 
@@ -90,5 +91,76 @@ describe('fillPdf', () => {
     const field = { id: 'f1', page: 0, x: 0.5, y: 0.5, size: 10, align: 'left', type: 'text', bind: 'orderNo' } as const;
     await expect(fillPdf(await makeTemplate(1, 90), mapWith([field], 1), { orderNo: 'X' }))
       .rejects.toThrow(UnsupportedPageError);
+  });
+});
+
+const OFFSET_X = 15;
+const PROBE_TEXT = 'ORD-12345';
+const PROBE_SIZE = 10;
+/** Neither 0, 0.5 nor 1 on either axis, and fx !== fy, so a transposed argument cannot hide. */
+const PROBE_FX = 0.25;
+const PROBE_FY = 0.75;
+/** A synthetic page has no scanner noise, so the conversion should be exact to rounding. */
+const EXACT_DIGITS = 6;
+
+/**
+ * Both origin components non-zero. The real contract has MediaBox.x = 0, so the
+ * 11-page proof can never catch a dropped `box.x` term — this page is what covers
+ * that axis.
+ */
+async function makeOffsetOriginTemplate(): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  doc.addPage().setMediaBox(OFFSET_X, OFFSET_Y, PAGE_W, PAGE_H);
+  return doc.save();
+}
+
+/** Where pdf.js actually renders a drawn string, in device space. Same technique as the 11-page proof. */
+async function readDevicePosition(bytes: Uint8Array, text: string) {
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const doc = await pdfjs.getDocument({
+    data: new Uint8Array(bytes),
+    // Positions are correct without this, but omitting it makes pdf.js warn on stderr.
+    standardFontDataUrl: `${resolve('node_modules/pdfjs-dist/standard_fonts/')}/`,
+  }).promise;
+  const page = await doc.getPage(1);
+  const viewport = page.getViewport({ scale: 1 });
+  const items = (await page.getTextContent()).items as Array<{ str: string; transform: number[] }>;
+  const matches = items.filter((item) => item.str.trim() === text);
+  expect(matches, `expected exactly one "${text}" in the output`).toHaveLength(1);
+  const [, , , , x, y] = pdfjs.Util.transform(viewport.transform, matches[0].transform);
+  return { x, y, width: viewport.width, height: viewport.height };
+}
+
+/**
+ * coords.test.ts pins `fractionToPdf` in isolation, but nothing pinned the WIRING
+ * inside drawField. A regression passing a zero-origin size there — the exact
+ * 7.92pt bug this project exists to prevent — used to pass every test in this file,
+ * because the only coordinate check was "more bytes were written".
+ */
+describe('fillPdf coordinate wiring', () => {
+  test('draws a left-aligned field at exactly the mapped fraction of the rendered page', async () => {
+    const field = { id: 'f1', page: 0, x: PROBE_FX, y: PROBE_FY, size: PROBE_SIZE, align: 'left', type: 'text', bind: 'orderNo' } as const;
+
+    const result = await fillPdf(await makeOffsetOriginTemplate(), mapWith([field], 1), { orderNo: PROBE_TEXT });
+    const drawn = await readDevicePosition(result.bytes, PROBE_TEXT);
+
+    expect(drawn.x).toBeCloseTo(PROBE_FX * drawn.width, EXACT_DIGITS);
+    expect(drawn.y).toBeCloseTo(PROBE_FY * drawn.height, EXACT_DIGITS);
+  });
+
+  test('shifts a centre-aligned field left by half its text width', async () => {
+    const field = { id: 'f1', page: 0, x: PROBE_FX, y: PROBE_FY, size: PROBE_SIZE, align: 'center', type: 'text', bind: 'orderNo' } as const;
+
+    const result = await fillPdf(await makeOffsetOriginTemplate(), mapWith([field], 1), { orderNo: PROBE_TEXT });
+    const drawn = await readDevicePosition(result.bytes, PROBE_TEXT);
+
+    // The proof exempts its centred probe from the X assertion, so this is the only
+    // automated coverage of centre alignment anywhere in the project.
+    const font = await (await PDFDocument.create()).embedFont(StandardFonts.Helvetica);
+    const textWidth = font.widthOfTextAtSize(PROBE_TEXT, PROBE_SIZE);
+    expect(textWidth).toBeGreaterThan(0);
+
+    expect(drawn.x).toBeCloseTo(PROBE_FX * drawn.width - textWidth / 2, EXACT_DIGITS);
+    expect(drawn.y).toBeCloseTo(PROBE_FY * drawn.height, EXACT_DIGITS);
   });
 });
